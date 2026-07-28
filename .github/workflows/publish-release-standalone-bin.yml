@@ -1,10 +1,12 @@
-# Builds the bare kernel image on demand, for VMMs that load a kernel from a
-# file at runtime (krun_set_kernel) instead of through the linker. Releases get
-# the same binary from publish-release.yml, which already builds the kernel;
-# this workflow exists for iterating on the configuration and for backfilling a
-# release that predates it. Self-contained on purpose: this repository tracks
-# upstream, so it drives the stock Makefile rather than adding targets to it.
-name: Build kernel binary
+# Companion to publish-release.yml for the standalone kernel image, which VMMs
+# load from a file at runtime (krun_set_kernel) instead of through the linker.
+# A published release already carries that image, built once alongside the
+# shared library; this workflow covers the cases that path does not — iterating
+# on the kernel configuration without cutting a release, and backfilling a
+# release published before the image was part of one. Self-contained on
+# purpose: this repository tracks upstream, so it drives the stock Makefile
+# rather than adding targets to it.
+name: Publish the standalone kernel binary
 
 on:
   workflow_dispatch:
