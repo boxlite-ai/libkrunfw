@@ -25,6 +25,8 @@ jobs:
           cd ..
           rm -fr tmp
           gh release upload ${{github.event.release.tag_name}} libkrunfw-x86_64.tgz
+          cp -f linux-*/vmlinux libkrunfw-kernel-x86_64.bin
+          gh release upload ${{github.event.release.tag_name}} libkrunfw-kernel-x86_64.bin
           make clean
         env:
           GITHUB_TOKEN: ${{ github.TOKEN }}
@@ -54,6 +56,8 @@ jobs:
           rm -fr tmp
           gh release upload ${{github.event.release.tag_name}} libkrunfw-prebuilt-aarch64.tgz
           gh release upload ${{github.event.release.tag_name}} libkrunfw-aarch64.tgz
+          cp -f linux-*/arch/arm64/boot/Image libkrunfw-kernel-aarch64.bin
+          gh release upload ${{github.event.release.tag_name}} libkrunfw-kernel-aarch64.bin
           make ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- clean
         env:
           GITHUB_TOKEN: ${{ github.TOKEN }}
