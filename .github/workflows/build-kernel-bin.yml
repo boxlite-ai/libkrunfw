@@ -1,0 +1,141 @@
+# Publishes the bare kernel image alongside the bundled library, for VMMs that
+# load a kernel from a file at runtime (krun_set_kernel) instead of through the
+# linker. Self-contained on purpose: this repository tracks upstream, so the
+# workflow drives the stock Makefile rather than adding targets to it.
+name: Build kernel binary
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: "Existing release tag to attach the kernel binaries to (empty uploads workflow artifacts only)"
+        required: false
+        type: string
+
+permissions:
+  contents: write
+
+env:
+  RELEASE_TAG: ${{ github.event_name == 'release' && github.event.release.tag_name || inputs.release_tag }}
+
+jobs:
+  build:
+    name: Build ${{ matrix.arch }} kernel binary
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: x86_64
+            runner: ubuntu-latest
+            # Makefile: KERNEL_BINARY_x86_64, bundled as an ELF image.
+            kernel_image: vmlinux
+            kernel_format: elf
+          - arch: aarch64
+            runner: ubuntu-24.04-arm
+            # Makefile: KERNEL_BINARY_aarch64, uncompressed and loaded verbatim.
+            kernel_image: arch/arm64/boot/Image
+            kernel_format: raw
+    steps:
+      - name: Code checkout
+        uses: actions/checkout@v4
+
+      - name: Install dependencies
+        # ccache is not part of the runner toolset. Its package keeps the
+        # /usr/lib/ccache compiler shims in sync through a dpkg trigger on the
+        # gcc directories, which is what lets the build step shadow gcc by
+        # prepending that directory to PATH.
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y make gcc bc bison flex elfutils python3-pyelftools curl patch libelf-dev ccache
+          echo "CCACHE_DIR=$HOME/.ccache" >> "$GITHUB_ENV"
+        shell: bash
+
+      # Only the compiler cache is reused. The kernel source tree is not:
+      # $(KERNEL_SOURCES) is a make target judged against the tarball's mtime,
+      # so a restore that lands the tarball newer re-runs the extract-and-patch
+      # recipe over the restored tree.
+      - name: Restore compiler cache
+        uses: actions/cache@v4
+        with:
+          path: ${{ env.CCACHE_DIR }}
+          key: ccache-${{ matrix.arch }}-${{ hashFiles('Makefile', 'config-libkrunfw_*', 'patches/*.patch') }}
+          restore-keys: |
+            ccache-${{ matrix.arch }}-
+
+      - name: Build kernel image
+        id: kernel
+        env:
+          # Two architectures against a 10 GB repository-wide cache budget.
+          CCACHE_MAXSIZE: 2G
+        run: |
+          set -euo pipefail
+          sources="$(sed -n 's/^KERNEL_VERSION = //p' Makefile)"
+          if [ -z "$sources" ]; then
+            echo "could not read KERNEL_VERSION from Makefile" >&2
+            exit 1
+          fi
+          export PATH="/usr/lib/ccache:$PATH"
+          ccache --zero-stats
+          # Stop at the kernel image; the C bundle and the shared library are
+          # what the release workflow builds and are not needed here. Left
+          # serial to match that workflow: the recipe passes $(MAKEFLAGS) to
+          # the kernel build explicitly, so -j there resets the jobserver
+          # rather than sharing it.
+          make "$sources/${{ matrix.kernel_image }}"
+          cp -f "$sources/${{ matrix.kernel_image }}" "libkrunfw-kernel-${{ matrix.arch }}.bin"
+          echo "sources=$sources" >> "$GITHUB_OUTPUT"
+        shell: bash
+
+      - name: Summarize kernel binary
+        run: |
+          set -euo pipefail
+          bin="libkrunfw-kernel-${{ matrix.arch }}.bin"
+          sha256sum "$bin" > "$bin.sha256"
+          {
+            echo "### \`$bin\`"
+            echo
+            echo "- kernel: \`${{ steps.kernel.outputs.sources }}\`"
+            echo "- format: \`${{ matrix.kernel_format }}\`"
+            echo "- size: $(du -h "$bin" | cut -f1)"
+            echo "- sha256: \`$(cut -d' ' -f1 "$bin.sha256")\`"
+            echo
+            echo '```'
+            echo "BOXLITE_EXPERIMENTAL=custom-kernel boxlite run \\"
+            echo "  --kernel \"\$PWD/$bin\" \\"
+            echo "  --kernel-format ${{ matrix.kernel_format }} \\"
+            echo "  alpine:latest"
+            echo '```'
+            echo
+            echo "<details><summary>ccache statistics</summary>"
+            echo
+            echo '```'
+            ccache --show-stats
+            echo '```'
+            echo
+            echo "</details>"
+          } >> "$GITHUB_STEP_SUMMARY"
+        shell: bash
+
+      - name: Upload kernel binary artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: libkrunfw-kernel-${{ matrix.arch }}
+          path: |
+            libkrunfw-kernel-${{ matrix.arch }}.bin
+            libkrunfw-kernel-${{ matrix.arch }}.bin.sha256
+          if-no-files-found: error
+
+      - name: Attach kernel binary to release
+        if: env.RELEASE_TAG != ''
+        run: |
+          gh release upload "$RELEASE_TAG" \
+            "libkrunfw-kernel-${{ matrix.arch }}.bin" \
+            "libkrunfw-kernel-${{ matrix.arch }}.bin.sha256" \
+            --clobber
+        env:
+          GITHUB_TOKEN: ${{ github.TOKEN }}
+        shell: bash
