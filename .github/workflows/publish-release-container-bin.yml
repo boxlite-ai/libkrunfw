@@ -43,6 +43,12 @@ jobs:
     steps:
       - name: Code checkout
         uses: actions/checkout@v4
+        with:
+          # This job holds contents: write for the release upload, and the
+          # steps below compile the checked-out tree. Persisting the token in
+          # .git/config would put a write-capable credential within reach of
+          # the build. The upload step is passed a token explicitly.
+          persist-credentials: false
 
       - name: Install dependencies
         run: |
