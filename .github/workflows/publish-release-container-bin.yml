@@ -3,9 +3,9 @@
 # profile omits bridge networking, netfilter/nf_tables, veth and overlayfs, so
 # a guest booted on it cannot run containers of its own.
 #
-# The variant is carried as a config fragment, so the config the Makefile
-# expects is assembled here rather than checked in, leaving the Makefile
-# identical to upstream.
+# The variant is carried as a git patch against generated config copies, so the
+# Makefile stays identical to upstream without treating the override set as a
+# free-floating fragment.
 name: Publish the container kernel binary
 
 on:
@@ -62,17 +62,17 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ${{ env.CCACHE_DIR }}
-          key: ccache-container-${{ matrix.arch }}-${{ hashFiles('Makefile', 'config-libkrunfw*', 'patches/*.patch') }}
+          key: ccache-container-${{ matrix.arch }}-${{ hashFiles('Makefile', 'config-libkrunfw*', 'config-patches/*.patch', 'patches/*.patch') }}
           restore-keys: |
             ccache-container-${{ matrix.arch }}-
 
-      # Kconfig reads sequentially and `olddefconfig` normalises the result, so
-      # appending is enough to override the lean profile's "is not set" lines.
       - name: Assemble container config
         run: |
           set -euo pipefail
-          cat "config-libkrunfw_${{ matrix.arch }}" config-libkrunfw-container.fragment \
-            > "config-libkrunfw-container_${{ matrix.arch }}"
+          cp config-libkrunfw_x86_64 config-libkrunfw-container_x86_64
+          cp config-libkrunfw_aarch64 config-libkrunfw-container_aarch64
+          git apply --check config-patches/0001-container-kernel-config.patch
+          git apply config-patches/0001-container-kernel-config.patch
         shell: bash
 
       - name: Build kernel image
