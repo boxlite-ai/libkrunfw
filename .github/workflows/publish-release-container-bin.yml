@@ -69,10 +69,10 @@ jobs:
       - name: Assemble container config
         run: |
           set -euo pipefail
-          cp "config-libkrunfw_${{ matrix.arch }}" "config-libkrunfw-container_${{ matrix.arch }}"
-          patch="config-patches/0001-container-kernel-config-${{ matrix.arch }}.patch"
-          git apply --check "$patch"
-          git apply "$patch"
+          cp "config-libkrunfw_${{ matrix.arch }}" config-libkrunfw-container_x86_64
+          git apply --check config-patches/0001-container-kernel-config.patch
+          git apply config-patches/0001-container-kernel-config.patch
+          mv config-libkrunfw-container_x86_64 "config-libkrunfw-container_${{ matrix.arch }}"
         shell: bash
 
       - name: Build kernel image
