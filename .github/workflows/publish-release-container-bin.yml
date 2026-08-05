@@ -72,7 +72,13 @@ jobs:
           cp "config-libkrunfw_${{ matrix.arch }}" config-libkrunfw-container_x86_64
           git apply --check config-patches/0001-container-kernel-config.patch
           git apply config-patches/0001-container-kernel-config.patch
-          mv config-libkrunfw-container_x86_64 "config-libkrunfw-container_${{ matrix.arch }}"
+          # The patch's diff header names the x86_64 staging file regardless of
+          # matrix.arch, so it can be shared by both architectures. For the
+          # x86_64 leg that staging name equals the final name; `mv` errors on
+          # a same-file rename, so skip it instead of renaming onto itself.
+          if [ "config-libkrunfw-container_x86_64" != "config-libkrunfw-container_${{ matrix.arch }}" ]; then
+            mv config-libkrunfw-container_x86_64 "config-libkrunfw-container_${{ matrix.arch }}"
+          fi
         shell: bash
 
       - name: Build kernel image
