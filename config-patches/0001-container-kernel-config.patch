@@ -1,7 +1,7 @@
 diff --git a/config-libkrunfw-container_x86_64 b/config-libkrunfw-container_x86_64
 --- a/config-libkrunfw-container_x86_64
 +++ b/config-libkrunfw-container_x86_64
-@@ -2409,1 +2409,55 @@
+@@ -2409,1 +2409,54 @@
  # end of Kernel hacking
 +
 +# Container runtime support on top of the lean profile. Everything is built in
@@ -52,7 +52,6 @@ diff --git a/config-libkrunfw-container_x86_64 b/config-libkrunfw-container_x86_
 +CONFIG_NFT_REDIR=y
 +CONFIG_NFT_CT=y
 +CONFIG_NFT_REJECT=y
-+CONFIG_NFT_CHAIN_NAT=y
 +CONFIG_NFT_COMPAT=y
 +CONFIG_NET_NS=y
 +CONFIG_POSIX_MQUEUE=y
