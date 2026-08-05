@@ -1,58 +1,77 @@
 diff --git a/config-libkrunfw-container_x86_64 b/config-libkrunfw-container_x86_64
 --- a/config-libkrunfw-container_x86_64
 +++ b/config-libkrunfw-container_x86_64
-@@ -2409,1 +2409,54 @@
+@@ -2409,1 +2409,73 @@
  # end of Kernel hacking
 +
 +# Container runtime support on top of the lean profile. Everything is built in
 +# (=y) because the guest has no /lib/modules and cannot load modules at runtime.
 +#
-+# Only the nftables backend is enabled. Docker/Podman on Alpine and Debian both
-+# default to iptables-nft (xtables-nft-multi), and dockerd's own entrypoint
-+# probe only falls back to the legacy ip_tables/ip6_tables backend when it
-+# finds pre-existing legacy rules or nft fails outright. Verified empirically
-+# against a running dockerd + docker compose (bridge network, published port,
-+# embedded DNS): every rule dockerd installs lands in the nftables ip/ip6
-+# tables via CONFIG_NFT_COMPAT (visible as "xt match"/"xt target" in `nft -a
-+# list ruleset`), and the legacy CONFIG_IP_NF_*/CONFIG_IP6_NF_* backend never
-+# registers a single table (/proc/net/ip_tables_names stays empty). Keeping
-+# both backends compiled in is dead weight at best; at worst it makes the
-+# backend dockerd picks depend on incidental kernel config (any legacy table
-+# ever registering flips dockerd to legacy, silently disabling everything
-+# below), and nf_tables is one of the most-exploited local-privesc surfaces in
-+# recent kernels. Everything below was cross-checked against the same running
-+# setup for actual use.
++# Only the nftables backend is enabled, for both IPv4 and IPv6. Docker/Podman
++# on Alpine and Debian both default to iptables-nft (xtables-nft-multi), and
++# dockerd's own entrypoint probe only falls back to the legacy ip_tables/
++# ip6_tables backend when it finds pre-existing legacy rules or nft fails
++# outright. Verified empirically against a running dockerd + docker compose
++# (bridge network, published port, embedded DNS): `nft list tables` shows both
++# `table ip nat`/`table ip filter` and `table ip6 nat`/`table ip6 filter`
++# populated via CONFIG_NFT_COMPAT (rules show as "xt match"/"xt target"), and
++# neither /proc/net/ip_tables_names nor the legacy IP6_NF_* code path ever
++# registers a table. Kconfig confirms this isn't IPv4-specific: NFT_COMPAT
++# depends only on NETFILTER_XTABLES, and NF_TABLES_IPV6 has no dependency on
++# IP6_NF_IPTABLES/FILTER/NAT — those three only get pulled in by each other
++# (select IP6_NF_IPTABLES_LEGACY), the exact structure IP_NF_FILTER/NAT have
++# for v4. Keeping either legacy backend compiled in is dead weight at best; at
++# worst it makes the backend dockerd picks depend on incidental kernel config
++# (any legacy table ever registering flips dockerd to legacy, silently
++# disabling everything below), and nf_tables is one of the most-exploited
++# local-privesc surfaces in recent kernels.
++#
++# Grouped by capability set, alphabetical within each group, so a duplicate or
++# stale symbol name stands out on sight instead of hiding in one long list.
++
++# Bridge networking (Docker's default bridge driver)
 +CONFIG_BRIDGE=y
 +CONFIG_BRIDGE_NETFILTER=y
 +CONFIG_LLC=y
 +CONFIG_STP=y
++
++# Netfilter core
 +CONFIG_NETFILTER=y
 +CONFIG_NETFILTER_ADVANCED=y
-+CONFIG_NF_CONNTRACK=y
 +CONFIG_NETFILTER_XTABLES=y
-+CONFIG_NETFILTER_XT_MARK=y
++
++# Connection tracking
++CONFIG_NF_CONNTRACK=y
++
++# x_tables matches/targets (what NFT_COMPAT translates iptables-nft rules
++# through; every one of these is exercised by dockerd's default rule set)
 +CONFIG_NETFILTER_XT_CONNMARK=y
-+CONFIG_NETFILTER_XT_TARGET_MASQUERADE=y
-+CONFIG_NETFILTER_XT_TARGET_REDIRECT=y
-+CONFIG_NETFILTER_XT_NAT=y
++CONFIG_NETFILTER_XT_MARK=y
 +CONFIG_NETFILTER_XT_MATCH_ADDRTYPE=y
 +CONFIG_NETFILTER_XT_MATCH_CONNTRACK=y
++CONFIG_NETFILTER_XT_NAT=y
++CONFIG_NETFILTER_XT_TARGET_MASQUERADE=y
++CONFIG_NETFILTER_XT_TARGET_REDIRECT=y
++
++# NAT core
 +CONFIG_NF_NAT=y
-+CONFIG_NF_NAT_REDIRECT=y
 +CONFIG_NF_NAT_MASQUERADE=y
-+CONFIG_IP6_NF_IPTABLES=y
-+CONFIG_IP6_NF_FILTER=y
-+CONFIG_IP6_NF_NAT=y
++CONFIG_NF_NAT_REDIRECT=y
++
++# nftables (the only backend actually enabled; both IPv4 and IPv6 rules live
++# here via NFT_COMPAT, not the legacy IP_NF_*/IP6_NF_* subsystem)
++CONFIG_NFT_COMPAT=y
++CONFIG_NFT_CT=y
++CONFIG_NFT_MASQ=y
++CONFIG_NFT_NAT=y
++CONFIG_NFT_REDIR=y
++CONFIG_NFT_REJECT=y
 +CONFIG_NF_TABLES=y
 +CONFIG_NF_TABLES_INET=y
 +CONFIG_NF_TABLES_IPV4=y
 +CONFIG_NF_TABLES_IPV6=y
-+CONFIG_NFT_NAT=y
-+CONFIG_NFT_MASQ=y
-+CONFIG_NFT_REDIR=y
-+CONFIG_NFT_CT=y
-+CONFIG_NFT_REJECT=y
-+CONFIG_NFT_COMPAT=y
++
++# Misc container needs
++CONFIG_EXT4_FS_POSIX_ACL=y
 +CONFIG_NET_NS=y
 +CONFIG_POSIX_MQUEUE=y
-+CONFIG_EXT4_FS_POSIX_ACL=y
