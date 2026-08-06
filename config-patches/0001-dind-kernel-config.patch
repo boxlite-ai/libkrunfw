@@ -1,10 +1,10 @@
-diff --git a/config-libkrunfw-container_x86_64 b/config-libkrunfw-container_x86_64
---- a/config-libkrunfw-container_x86_64
-+++ b/config-libkrunfw-container_x86_64
+diff --git a/config-libkrunfw-dind_x86_64 b/config-libkrunfw-dind_x86_64
+--- a/config-libkrunfw-dind_x86_64
++++ b/config-libkrunfw-dind_x86_64
 @@ -2409,1 +2409,73 @@
  # end of Kernel hacking
 +
-+# Container runtime support on top of the lean profile. Everything is built in
++# DinD runtime support on top of the lean profile. Everything is built in
 +# (=y) because the guest has no /lib/modules and cannot load modules at runtime.
 +#
 +# Only the nftables backend is enabled, for both IPv4 and IPv6. Docker/Podman
@@ -71,7 +71,7 @@ diff --git a/config-libkrunfw-container_x86_64 b/config-libkrunfw-container_x86_
 +CONFIG_NF_TABLES_IPV4=y
 +CONFIG_NF_TABLES_IPV6=y
 +
-+# Misc container needs
++# Misc DinD needs
 +CONFIG_EXT4_FS_POSIX_ACL=y
 +CONFIG_NET_NS=y
 +CONFIG_POSIX_MQUEUE=y
