@@ -1,7 +1,7 @@
 diff --git a/config-libkrunfw-dind_x86_64 b/config-libkrunfw-dind_x86_64
 --- a/config-libkrunfw-dind_x86_64
 +++ b/config-libkrunfw-dind_x86_64
-@@ -2409,1 +2409,73 @@
+@@ -2409,1 +2409,91 @@
  # end of Kernel hacking
 +
 +# DinD runtime support on top of the lean profile. Everything is built in
@@ -32,8 +32,10 @@ diff --git a/config-libkrunfw-dind_x86_64 b/config-libkrunfw-dind_x86_64
 +# Bridge networking (Docker's default bridge driver)
 +CONFIG_BRIDGE=y
 +CONFIG_BRIDGE_NETFILTER=y
++CONFIG_BRIDGE_VLAN_FILTERING=y
 +CONFIG_LLC=y
 +CONFIG_STP=y
++CONFIG_VLAN_8021Q=y
 +
 +# Netfilter core
 +CONFIG_NETFILTER=y
@@ -42,13 +44,17 @@ diff --git a/config-libkrunfw-dind_x86_64 b/config-libkrunfw-dind_x86_64
 +
 +# Connection tracking
 +CONFIG_NF_CONNTRACK=y
++CONFIG_NF_CONNTRACK_ZONES=y
++CONFIG_NF_CT_NETLINK=y
 +
 +# x_tables matches/targets (what NFT_COMPAT translates iptables-nft rules
-+# through; every one of these is exercised by dockerd's default rule set)
++# through for Docker bridge networking and Swarm VIP/overlay rules)
 +CONFIG_NETFILTER_XT_CONNMARK=y
 +CONFIG_NETFILTER_XT_MARK=y
 +CONFIG_NETFILTER_XT_MATCH_ADDRTYPE=y
 +CONFIG_NETFILTER_XT_MATCH_CONNTRACK=y
++CONFIG_NETFILTER_XT_MATCH_IPVS=y
++CONFIG_NETFILTER_XT_MATCH_U32=y
 +CONFIG_NETFILTER_XT_NAT=y
 +CONFIG_NETFILTER_XT_TARGET_MASQUERADE=y
 +CONFIG_NETFILTER_XT_TARGET_REDIRECT=y
@@ -75,3 +81,15 @@ diff --git a/config-libkrunfw-dind_x86_64 b/config-libkrunfw-dind_x86_64
 +CONFIG_EXT4_FS_POSIX_ACL=y
 +CONFIG_NET_NS=y
 +CONFIG_POSIX_MQUEUE=y
++
++# Swarm VIP/ingress load balancing and cross-node overlay transport
++CONFIG_IP_VS=y
++CONFIG_IP_VS_NFCT=y
++CONFIG_IP_VS_PROTO_TCP=y
++CONFIG_IP_VS_PROTO_UDP=y
++CONFIG_IP_VS_RR=y
++CONFIG_VXLAN=y
++
++# Capture the effective configuration in the binary and the running guest.
++CONFIG_IKCONFIG=y
++CONFIG_IKCONFIG_PROC=y
