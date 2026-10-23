@@ -6,3 +6,6 @@ kernel.c
 vmlinux
 /tarballs
 /linux-*
+/config-libkrunfw-dind_*
+/libkrunfw-dind.so*
+/libkrunfw-kernel-dind-*
