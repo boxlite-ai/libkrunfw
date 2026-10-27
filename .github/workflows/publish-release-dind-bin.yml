@@ -1,12 +1,12 @@
 # Companion to publish-release-standalone-bin.yml for the DinD kernel
-# variant, which VMMs load from a file at runtime (krun_set_kernel). The lean
+# variant, for direct boot and consumers of the standard libkrunfw ABI. The lean
 # profile omits bridge networking, netfilter/nf_tables, IPVS and VXLAN, so
 # a guest booted on it cannot provide Docker bridge or Swarm networking.
 #
 # The variant is carried as a git patch against generated config copies, so the
 # Makefile stays identical to upstream without treating the override set as a
 # free-floating fragment.
-name: Publish the DinD kernel binary
+name: Publish DinD kernels and firmware packages
 
 on:
   pull_request:
@@ -16,11 +16,16 @@ on:
       - config-libkrunfw_*
       - config-patches/**
       - patches/**
+      - bin2cbundle.py
+      - utils/Makefile
       - utils/check-dind-kernel.sh
+      - utils/check_dind_library.py
+      - utils/package-dind-library.sh
+      - utils/test_dind_library.py
   workflow_dispatch:
     inputs:
       release_tag:
-        description: "Existing release tag to attach the kernel binaries to (empty uploads workflow artifacts only)"
+        description: "Existing release tag for kernels and firmware packages (empty uploads workflow artifacts only)"
         required: false
         type: string
 
@@ -29,7 +34,7 @@ permissions:
 
 jobs:
   build:
-    name: Build ${{ matrix.arch }} DinD kernel binary
+    name: Build ${{ matrix.arch }} DinD kernel and firmware
     runs-on: ${{ matrix.runner }}
     strategy:
       fail-fast: false
@@ -58,6 +63,9 @@ jobs:
           sudo apt-get install -y make gcc bc bison flex elfutils python3-pyelftools curl patch libelf-dev ccache
           echo "CCACHE_DIR=$HOME/.ccache" >> "$GITHUB_ENV"
         shell: bash
+
+      - name: Test firmware ABI verification
+        run: make -f utils/Makefile test-dind-library
 
       - name: Restore compiler cache
         uses: actions/cache@v4
@@ -126,15 +134,29 @@ jobs:
           } >> "$GITHUB_STEP_SUMMARY"
         shell: bash
 
-      - name: Upload kernel binary artifact
+      - name: Package firmware for the standard libkrunfw ABI
+        run: |
+          make -f utils/Makefile package-dind \
+            DIND_SOURCES="${{ steps.kernel.outputs.sources }}" \
+            DIND_IMAGE="libkrunfw-kernel-dind-${{ matrix.arch }}.bin"
+          {
+            echo '### Firmware archive'
+            echo 'The archive exposes libkrunfw.so.5 with the verified DinD kernel.'
+            cat dist/dind/*.sha256
+          } >> "$GITHUB_STEP_SUMMARY"
+        shell: bash
+
+      - name: Upload verified DinD artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: libkrunfw-kernel-dind-${{ matrix.arch }}
+          name: libkrunfw-dind-${{ matrix.arch }}
           path: |
             libkrunfw-kernel-dind-${{ matrix.arch }}.bin
             libkrunfw-kernel-dind-${{ matrix.arch }}.bin.sha256
             libkrunfw-kernel-dind-${{ matrix.arch }}.bin.config
             libkrunfw-kernel-dind-${{ matrix.arch }}.bin.config.sha256
+            dist/dind/*.tgz
+            dist/dind/*.tgz.sha256
           if-no-files-found: error
 
   publish:
@@ -147,16 +169,18 @@ jobs:
       - name: Download verified kernel artifacts
         uses: actions/download-artifact@v4
         with:
-          pattern: libkrunfw-kernel-dind-*
+          pattern: libkrunfw-dind-*
           merge-multiple: true
           path: artifacts
 
-      - name: Attach kernel binary to release
+      - name: Attach kernels and firmware packages to release
         run: |
           set -euo pipefail
           cd artifacts
           sha256sum -c ./*.sha256
-          gh release upload "$RELEASE_TAG" ./* --clobber
+          (cd dist/dind && sha256sum -c ./*.sha256)
+          gh release upload "$RELEASE_TAG" ./libkrunfw-kernel-dind-* \
+            ./dist/dind/*.tgz ./dist/dind/*.tgz.sha256 --clobber
         env:
           RELEASE_TAG: ${{ inputs.release_tag }}
           GH_REPO: ${{ github.repository }}

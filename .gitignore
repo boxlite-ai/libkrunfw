@@ -9,3 +9,5 @@ vmlinux
 /config-libkrunfw-dind_*
 /libkrunfw-dind.so*
 /libkrunfw-kernel-dind-*
+/dist/
+/.venv/

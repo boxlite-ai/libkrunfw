@@ -62,15 +62,40 @@ The x86_64 binary is ELF; aarch64 is a raw `Image`. For a shared-library consume
 Select this artifact explicitly in the VMM and restart the guests. An existing
 generic library or an already running guest does not acquire the new features.
 
+For consumers that load the standard `libkrunfw.so.5` name, package the verified
+binary from the commands above:
+
+```sh
+make -f utils/Makefile test-dind-library
+make -f utils/Makefile package-dind DIND_SOURCES="$sources" DIND_IMAGE="$bin"
+(cd dist/dind && sha256sum -c "libkrunfw-dind-$arch.tgz.sha256")
+```
+
+Set `PYTHON=/path/to/python` when using a virtual environment with `pyelftools`.
+Packaging is native Linux x86_64 or aarch64 and does not rebuild the kernel.
+`DIND_OUTPUT` overrides the default `dist/dind` directory. The resulting
+`libkrunfw-dind-<arch>.tgz` contains `lib64/libkrunfw.so.5.4.0`, the standard
+`.so.5`/`.so` symlinks, and a `libkrunfw.so.5` SONAME. Its ABI remains 5.
+The archive name identifies the DinD variant; consumers select its download URL
+and **archive** SHA256 rather than the standalone kernel's SHA256.
+
+Before packaging, the script checks the image's embedded configuration. It then
+loads the generated library and compares its exported kernel bytes, padding,
+load address, entry address and ABI against that exact image. It repeats this
+check after extracting the archive. The effective config, licenses and an
+artifact manifest with kernel/library hashes are under
+`share/doc/libkrunfw-dind/`. Archive metadata is normalized; `SOURCE_DATE_EPOCH`
+sets its timestamp (default zero).
+
 The [DinD workflow](.github/workflows/publish-release-dind-bin.yml) builds both
 architectures on relevant PRs and manual dispatch. Before upload, it checks
 the resolved Kconfig values and extracts the configuration from the actual
-binary, requiring an exact match. The binary, effective config and their
-checksums are retained together. Only a manual run with `release_tag` publishes
-release assets, after both architecture builds pass. Existing release assets
-are unchanged until that workflow is run on the fixed revision.
-Use a new release tag and update consumers' pinned binary checksums together;
-overwriting an older asset breaks consumers pinned to its previous checksum.
+binary, requiring an exact match. The binary, effective config, standard-ABI
+firmware archive and their checksums are retained together. Only a manual run
+with `release_tag` publishes release assets, after both architecture builds and
+library checks pass. New DinD archives can be attached to an existing release
+without replacing the generic firmware archives. Replacing an existing asset
+requires updating consumers pinned to its previous checksum.
 
 Build checks do not replace guest runtime verification. In a disposable guest
 booted with the new artifact, install `iproute2` and `ipvsadm` and run:
