@@ -19,6 +19,13 @@ make
 sudo make install
 ```
 
+The generic x86_64 and aarch64 configurations enable `CONFIG_VIRTIO_MEM=y` for
+online memory growth. The VMM must expose a virtio-mem device and pass
+`memhp_default_state=online` and `memory_hotplug.memmap_on_memory=1` as separate
+kernel command-line parameters. Unplugged capacity is not usable guest RAM.
+Changes to either architecture's configuration refresh the generated `.config`
+before rebuilding the kernel.
+
 ### Linux (SEV variant)
 
 #### Requirements
