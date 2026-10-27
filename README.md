@@ -26,6 +26,82 @@ kernel command-line parameters. Unplugged capacity is not usable guest RAM.
 Changes to either architecture's configuration refresh the generated `.config`
 before rebuilding the kernel.
 
+### Linux (DinD and Docker Swarm variant)
+
+The generic kernel is intentionally lean. The DinD patch adds built-in bridge,
+nftables, storage and namespace support, plus **VXLAN** for Swarm overlay networks
+and **IPVS** (TCP/UDP, round-robin, connection tracking) for VIPs and ingress.
+It also enables the IPVS/u32 xtables matches used through `iptables-nft`.
+All required features are `=y`: these guests do not ship a loadable module tree.
+Legacy iptables backends remain disabled.
+
+Build from a fresh checkout on Linux x86_64 or aarch64, with the requirements
+above. Changes to the selected architecture configuration refresh `.config`
+automatically. When switching variants in an existing build directory, run
+`make VARIANT=-dind clean` first; keep `tarballs/` to reuse downloads.
+
+```sh
+arch=$(uname -m)
+case "$arch" in
+  x86_64) image=vmlinux ;;
+  aarch64) image=arch/arm64/boot/Image ;;
+  *) echo "unsupported DinD architecture: $arch" >&2; exit 1 ;;
+esac
+sources=$(sed -n 's/^KERNEL_VERSION = //p' Makefile)
+cp "config-libkrunfw_$arch" config-libkrunfw-dind_x86_64
+git apply --check config-patches/0001-dind-kernel-config.patch
+git apply config-patches/0001-dind-kernel-config.patch
+if [ "$arch" != x86_64 ]; then
+  mv config-libkrunfw-dind_x86_64 "config-libkrunfw-dind_$arch"
+fi
+make VARIANT=-dind "$sources/$image"
+bin="libkrunfw-kernel-dind-$arch.bin"
+cp "$sources/$image" "$bin"
+utils/check-dind-kernel.sh "$sources" "$bin"
+cp "$sources/.config" "$bin.config"
+sha256sum "$bin" > "$bin.sha256"
+sha256sum "$bin.config" > "$bin.config.sha256"
+```
+
+The x86_64 binary is ELF; aarch64 is a raw `Image`. For a shared-library consumer,
+`make VARIANT=-dind` bundles the same kernel as `libkrunfw-dind.so.5.4.0`.
+Select this artifact explicitly in the VMM and restart the guests. An existing
+generic library or an already running guest does not acquire the new features.
+
+The [DinD workflow](.github/workflows/publish-release-dind-bin.yml) builds both
+architectures on relevant PRs and manual dispatch. Before upload, it checks
+the resolved Kconfig values and extracts the configuration from the actual
+binary, requiring an exact match. The binary, effective config and their
+checksums are retained together. Only a manual run with `release_tag` publishes
+release assets, after both architecture builds pass. Existing release assets
+are unchanged until that workflow is run on the fixed revision.
+Use a new release tag and update consumers' pinned binary checksums together;
+overwriting an older asset breaks consumers pinned to its previous checksum.
+
+Build checks do not replace guest runtime verification. In a disposable guest
+booted with the new artifact, install `iproute2` and `ipvsadm` and run:
+
+```sh
+uname -r
+zcat /proc/config.gz | sha256sum  # compare with the artifact's .config
+ip link add proof-vx type vxlan id 4210 dev eth0 dstport 4789
+ip -d link show proof-vx
+ip link del proof-vx
+ipvsadm -A -t 10.255.254.1:9999 -s rr
+ipvsadm -Ln
+ipvsadm -D -t 10.255.254.1:9999
+```
+
+Then verify real Docker services: default VIP and DNSRR service-name requests,
+cross-node overlay traffic, and ingress from a node without the backend task.
+The VMM must provide guest capabilities/cgroups and reachable node addresses;
+[Docker's Swarm network prerequisites](https://docs.docker.com/engine/swarm/swarm-tutorial/#open-protocols-and-ports-between-the-hosts)
+still apply. This configuration covers ordinary unencrypted overlays; it does
+not qualify encrypted overlays or supply the VMM's inter-node network.
+
+See the [x86_64 runtime validation](docs/dind-swarm-validation.md) for artifact
+hashes, the observed failure/pass comparison, and tested topology limits.
+
 ### Linux (SEV variant)
 
 #### Requirements

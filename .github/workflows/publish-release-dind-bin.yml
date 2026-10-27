@@ -1,0 +1,164 @@
+# Companion to publish-release-standalone-bin.yml for the DinD kernel
+# variant, which VMMs load from a file at runtime (krun_set_kernel). The lean
+# profile omits bridge networking, netfilter/nf_tables, IPVS and VXLAN, so
+# a guest booted on it cannot provide Docker bridge or Swarm networking.
+#
+# The variant is carried as a git patch against generated config copies, so the
+# Makefile stays identical to upstream without treating the override set as a
+# free-floating fragment.
+name: Publish the DinD kernel binary
+
+on:
+  pull_request:
+    paths:
+      - .github/workflows/publish-release-dind-bin.yml
+      - Makefile
+      - config-libkrunfw_*
+      - config-patches/**
+      - patches/**
+      - utils/check-dind-kernel.sh
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: "Existing release tag to attach the kernel binaries to (empty uploads workflow artifacts only)"
+        required: false
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Build ${{ matrix.arch }} DinD kernel binary
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: x86_64
+            runner: ubuntu-latest
+            # Makefile: KERNEL_BINARY_x86_64, bundled as an ELF image.
+            kernel_image: vmlinux
+            kernel_format: elf
+          - arch: aarch64
+            runner: ubuntu-24.04-arm
+            # Makefile: KERNEL_BINARY_aarch64, uncompressed and loaded verbatim.
+            kernel_image: arch/arm64/boot/Image
+            kernel_format: raw
+    steps:
+      - name: Code checkout
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Install dependencies
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y make gcc bc bison flex elfutils python3-pyelftools curl patch libelf-dev ccache
+          echo "CCACHE_DIR=$HOME/.ccache" >> "$GITHUB_ENV"
+        shell: bash
+
+      - name: Restore compiler cache
+        uses: actions/cache@v4
+        with:
+          path: ${{ env.CCACHE_DIR }}
+          key: ccache-dind-${{ matrix.arch }}-${{ hashFiles('Makefile', 'config-libkrunfw*', 'config-patches/*.patch', 'patches/*.patch') }}
+          restore-keys: |
+            ccache-dind-${{ matrix.arch }}-
+
+      - name: Assemble DinD config
+        run: |
+          set -euo pipefail
+          cp "config-libkrunfw_${{ matrix.arch }}" config-libkrunfw-dind_x86_64
+          git apply --check config-patches/0001-dind-kernel-config.patch
+          git apply config-patches/0001-dind-kernel-config.patch
+          # The patch's diff header names the x86_64 staging file regardless of
+          # matrix.arch, so it can be shared by both architectures. For the
+          # x86_64 leg that staging name equals the final name; `mv` errors on
+          # a same-file rename, so skip it instead of renaming onto itself.
+          if [ "config-libkrunfw-dind_x86_64" != "config-libkrunfw-dind_${{ matrix.arch }}" ]; then
+            mv config-libkrunfw-dind_x86_64 "config-libkrunfw-dind_${{ matrix.arch }}"
+          fi
+        shell: bash
+
+      - name: Build kernel image
+        id: kernel
+        env:
+          CCACHE_MAXSIZE: 2G
+        run: |
+          set -euo pipefail
+          sources="$(sed -n 's/^KERNEL_VERSION = //p' Makefile)"
+          if [ -z "$sources" ]; then
+            echo "could not read KERNEL_VERSION from Makefile" >&2
+            exit 1
+          fi
+          export PATH="/usr/lib/ccache:$PATH"
+          ccache --zero-stats
+          make VARIANT=-dind "$sources/${{ matrix.kernel_image }}"
+          echo "sources=$sources" >> "$GITHUB_OUTPUT"
+        shell: bash
+
+      - name: Package and verify DinD and Swarm kernel binary
+        run: |
+          set -euo pipefail
+          bin="libkrunfw-kernel-dind-${{ matrix.arch }}.bin"
+          cp -f "${{ steps.kernel.outputs.sources }}/${{ matrix.kernel_image }}" "$bin"
+          utils/check-dind-kernel.sh "${{ steps.kernel.outputs.sources }}" "$bin"
+          cp "${{ steps.kernel.outputs.sources }}/.config" "$bin.config"
+          sha256sum "$bin" > "$bin.sha256"
+          sha256sum "$bin.config" > "$bin.config.sha256"
+          {
+            echo "### \`$bin\`"
+            echo
+            echo "- kernel: \`${{ steps.kernel.outputs.sources }}\`"
+            echo "- format: \`${{ matrix.kernel_format }}\`"
+            echo "- size: $(du -h "$bin" | cut -f1)"
+            echo "- sha256: \`$(cut -d' ' -f1 "$bin.sha256")\`"
+            echo '- DinD/Swarm features: built in; embedded config verified'
+            echo
+            echo '```'
+            echo "BOXLITE_EXPERIMENTAL=custom-kernel boxlite run \\"
+            echo "  --kernel \"\$PWD/$bin\" \\"
+            echo "  --kernel-format ${{ matrix.kernel_format }} \\"
+            echo "  --cap-add ALL  IMAGE"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+        shell: bash
+
+      - name: Upload kernel binary artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: libkrunfw-kernel-dind-${{ matrix.arch }}
+          path: |
+            libkrunfw-kernel-dind-${{ matrix.arch }}.bin
+            libkrunfw-kernel-dind-${{ matrix.arch }}.bin.sha256
+            libkrunfw-kernel-dind-${{ matrix.arch }}.bin.config
+            libkrunfw-kernel-dind-${{ matrix.arch }}.bin.config.sha256
+          if-no-files-found: error
+
+  publish:
+    if: github.event_name == 'workflow_dispatch' && inputs.release_tag != ''
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Download verified kernel artifacts
+        uses: actions/download-artifact@v4
+        with:
+          pattern: libkrunfw-kernel-dind-*
+          merge-multiple: true
+          path: artifacts
+
+      - name: Attach kernel binary to release
+        run: |
+          set -euo pipefail
+          cd artifacts
+          sha256sum -c ./*.sha256
+          gh release upload "$RELEASE_TAG" ./* --clobber
+        env:
+          RELEASE_TAG: ${{ inputs.release_tag }}
+          GH_REPO: ${{ github.repository }}
+          GITHUB_TOKEN: ${{ github.TOKEN }}
+        shell: bash
