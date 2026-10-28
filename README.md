@@ -19,6 +19,13 @@ make
 sudo make install
 ```
 
+The generic x86_64 and aarch64 configurations enable `CONFIG_VIRTIO_MEM=y` for
+online memory growth. The VMM must expose a virtio-mem device and pass
+`memhp_default_state=online` and `memory_hotplug.memmap_on_memory=1` as separate
+kernel command-line parameters. Unplugged capacity is not usable guest RAM.
+Changes to either architecture's configuration refresh the generated `.config`
+before rebuilding the kernel.
+
 ### Linux (DinD and Docker Swarm variant)
 
 The generic kernel is intentionally lean. The DinD patch adds built-in bridge,
@@ -29,10 +36,9 @@ All required features are `=y`: these guests do not ship a loadable module tree.
 Legacy iptables backends remain disabled.
 
 Build from a fresh checkout on Linux x86_64 or aarch64, with the requirements
-above. If reusing a build directory after changing the variant or configuration,
-run `make VARIANT=-dind clean` first; keep `tarballs/` to reuse downloads.
-The upstream Makefile does not track configuration changes in an existing
-kernel source tree.
+above. Changes to the selected architecture configuration refresh `.config`
+automatically. When switching variants in an existing build directory, run
+`make VARIANT=-dind clean` first; keep `tarballs/` to reuse downloads.
 
 ```sh
 arch=$(uname -m)
