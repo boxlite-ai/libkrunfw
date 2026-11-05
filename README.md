@@ -19,6 +19,11 @@ make
 sudo make install
 ```
 
+On Linux x86_64, the firmware wrapper is linked with `-nostdlib` so static VMMs
+can load it without a second host libc. Removing a libc `DT_NEEDED` entry after
+linking can leave `GLIBC_*` version requirements behind and abort a static loader.
+Changing wrapper link flags in the Makefile relinks it while reusing the kernel.
+
 The generic x86_64 and aarch64 configurations enable `CONFIG_VIRTIO_MEM=y` for
 online memory growth. The VMM must expose a virtio-mem device and pass
 `memhp_default_state=online` and `memory_hotplug.memmap_on_memory=1` as separate
