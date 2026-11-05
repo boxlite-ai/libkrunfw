@@ -62,6 +62,8 @@ KRUNFW_BINARY_Linux = libkrunfw$(VARIANT).so.$(FULL_VERSION)
 KRUNFW_SONAME_Linux = libkrunfw$(VARIANT).so.$(ABI_VERSION)
 KRUNFW_BASE_Linux = libkrunfw$(VARIANT).so
 SONAME_Linux = -Wl,-soname,$(KRUNFW_SONAME_Linux)
+# Static x86_64 loaders need a bundle without host libc version requirements.
+KRUNFW_LDFLAGS_Linux_x86_64 = -nostdlib
 
 KRUNFW_BINARY_Darwin = libkrunfw.$(ABI_VERSION).dylib
 KRUNFW_SONAME_Darwin = libkrunfw.$(ABI_VERSION).dylib
@@ -143,11 +145,11 @@ $(INITRD_C_BUNDLE): $(INITRD_BINARY)
 	@python3 bin2cbundle.py -t initrd $(INITRD_BINARY) initrd.c
 endif
 
-$(KRUNFW_BINARY_$(OS)): $(KERNEL_C_BUNDLE) $(QBOOT_C_BUNDLE) $(INITRD_C_BUNDLE)
+$(KRUNFW_BINARY_$(OS)): $(KERNEL_C_BUNDLE) $(QBOOT_C_BUNDLE) $(INITRD_C_BUNDLE) Makefile
 ifeq ($(OS),Windows)
 	$(CC) -shared -DABI_VERSION=$(ABI_VERSION) -O2 -o $@ $(KERNEL_C_BUNDLE) $(QBOOT_C_BUNDLE) $(INITRD_C_BUNDLE) -Wl,--kill-at -Wl,--nxcompat
 else
-	$(CC) -fPIC -DABI_VERSION=$(ABI_VERSION) -shared $(SONAME_$(OS)) -o $@ $(KERNEL_C_BUNDLE) $(QBOOT_C_BUNDLE) $(INITRD_C_BUNDLE)
+	$(CC) -fPIC -DABI_VERSION=$(ABI_VERSION) -shared $(KRUNFW_LDFLAGS_$(OS)_$(GUESTARCH)) $(SONAME_$(OS)) -o $@ $(KERNEL_C_BUNDLE) $(QBOOT_C_BUNDLE) $(INITRD_C_BUNDLE)
 ifeq ($(OS),Linux)
 	$(STRIP) $(KRUNFW_BINARY_$(OS))
 endif
