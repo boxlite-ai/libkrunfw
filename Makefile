@@ -105,10 +105,12 @@ $(KERNEL_TARBALL):
 $(KERNEL_SOURCES): $(KERNEL_TARBALL)
 	tar xf $(KERNEL_TARBALL)
 	for patch in $(KERNEL_PATCHES); do patch -p1 -d $(KERNEL_SOURCES) < "$$patch"; done
-	cp config-libkrunfw$(VARIANT)_$(GUESTARCH) $(KERNEL_SOURCES)/.config
+
+$(KERNEL_SOURCES)/.config: config-libkrunfw$(VARIANT)_$(GUESTARCH) | $(KERNEL_SOURCES)
+	cp $< $@
 	cd $(KERNEL_SOURCES) ; $(MAKE) olddefconfig
 
-$(KERNEL_BINARY_$(GUESTARCH)): $(KERNEL_SOURCES)
+$(KERNEL_BINARY_$(GUESTARCH)): $(KERNEL_SOURCES) $(KERNEL_SOURCES)/.config
 	cd $(KERNEL_SOURCES) ; rm -f .version ; $(MAKE) $(MAKEFLAGS) $(KERNEL_FLAGS)
 
 ifeq ($(OS),Darwin)
